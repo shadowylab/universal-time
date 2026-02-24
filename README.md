@@ -1,45 +1,94 @@
 # universal-time
 
-Cross-platform time primitives for Rust that can run in any envuironment.
+Cross-platform time primitives with **compile-time guarantees** — no runtime panics!
 
-## Why
+This library provides `Instant` (monotonic time) and `SystemTime` (wall-clock time) that work consistently across all platforms with zero runtime overhead.
 
-`universal-time` gives you a single API for:
+## Why?
 
-- `Instant` for monotonic elapsed-time measurements
-- `SystemTime` for wall-clock timestamps
-- Trait-based clock injection for platforms without built-in time access
+This library **fails at link time** if you try to build without a time provider on platforms that need one. This means:
+
+- ✅ **Zero runtime panics** from missing time sources
+- ✅ **Compile-time verification** that time is available
+- ✅ **Single consistent API** across all platforms
+- ✅ **No overhead** – compiles away to platform calls
 
 ## Quick Start
+
+### With `std` (default)
+
+Works automatically with `std::time`:
 
 ```rust,no_run
 use universal_time::{Instant, SystemTime, UNIX_EPOCH};
 
 fn main() {
     let start = Instant::now();
-    let now = SystemTime::now();
     let elapsed = start.elapsed();
-    let since_epoch = now.duration_since(UNIX_EPOCH).unwrap_or_default();
 
-    println!("elapsed = {:?}", elapsed);
-    println!("since epoch = {:?}", since_epoch);
+    let now = SystemTime::now();
+    let since_epoch = now.duration_since(UNIX_EPOCH).unwrap();
+
+    println!("Elapsed: {:?}", elapsed);
+    println!("Since Unix epoch: {:?}", since_epoch);
 }
 ```
 
-For more examples, check out the [examples](examples) directory.
+### Without `std` (embedded, WASM unknown)
 
-## Panic Behavior
+Define a custom time provider using the `define_time_provider!` macro:
 
-In `no_std` mode, and in `std` mode on `wasm32-unknown-unknown`, both
-`Instant::now()` and `SystemTime::now()` panic when:
+```rust,ignore
+# use core::time::Duration;
+# use universal_time::{define_time_provider, Instant, SystemTime, WallClock, MonotonicClock};
+struct MyTimeProvider;
 
-- no global context has been installed, or
-- installed context returns `None` for that clock type
+impl WallClock for MyTimeProvider {
+    fn system_time(&self) -> SystemTime {
+        // Your platform-specific implementation
+        # SystemTime::from_unix_duration(Duration::from_secs(0))
+    }
+}
 
-This is intentional so missing time sources fail fast instead of silently returning fake timestamps.
+impl MonotonicClock for MyTimeProvider {
+    fn instant(&self) -> Instant {
+        // Your platform-specific implementation
+        # Instant::from_ticks(Duration::from_secs(0))
+    }
+}
 
-## Concurrency Notes
+define_time_provider!(MyTimeProvider);
+# fn main() {
+#    // Now Instant::now() and SystemTime::now() work!
+#     let _now = Instant::now();
+# }
+```
 
-- `std`: global context uses `OnceLock`
-- `no_std` with atomics: global context uses lock-free once initialization
-- `no_std` without atomics: fallback expects single-threaded startup initialization
+## How It Works
+
+The library uses **extern symbols** to enforce time provider availability at **link time**:
+
+| Platform                             | Behavior                               |
+|--------------------------------------|----------------------------------------|
+| Linux/macOS/Windows with `std`       | Uses `std::time` automatically         |
+| `no_std` and `wasm*-unknown-unknown` | Requires `define_time_provider!` macro |
+| Other WASM targets with `std`        | Uses `std::time` automatically         |
+
+**Without a provider on no_std**, you get a clear link error:
+```text
+error: undefined reference to '__universal_time_provider'
+```
+
+**Duplicate provider?** Link error: "duplicate symbol" – catches configuration mistakes at compile time!
+
+## Features
+
+- `std` (enabled by default) - Uses `std::time` on supported platforms
+
+## Changelog
+
+All notable changes to this library are documented in the [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+This project is distributed under the MIT software license – see the [LICENSE](./LICENSE) file for details

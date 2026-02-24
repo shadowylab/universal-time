@@ -2,12 +2,16 @@
 name = "universal-time"
 version = "0.1.0"
 edition = "2021"
-description = "Cross-platform time primitives"
+description = "Cross-platform time primitives with compile-time guarantees — no runtime panics!"
 authors = ["Yuki Kishimoto <yukikishimoto@protonmail.com>"]
 homepage = "https://github.com/shadowylab/universal-time"
 repository = "https://github.com/shadowylab/universal-time.git"
 license = "MIT"
 rust-version = "1.70.0"
+
+[package.metadata.docs.rs]
+no-default-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = ["std"]

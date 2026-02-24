@@ -23,14 +23,15 @@ impl SystemTime {
     }
 
     /// Returns the current system time.
+    ///
+    /// # Platform behavior
+    ///
+    /// - With `std` feature on supported platforms: uses `std::time::SystemTime`
+    /// - Without `std` or on WASM unknown: uses the provider defined via `define_time_provider!` macro
+    ///
+    /// If no provider is defined on platforms without std, you'll get a **link error** at compile time.
     #[inline]
     pub fn now() -> Self {
-        if let Some(context) = crate::global::global_time_context() {
-            if let Some(now) = context.system_time() {
-                return now;
-            }
-        }
-
         #[cfg(all(
             feature = "std",
             not(all(target_family = "wasm", target_os = "unknown"))
@@ -45,10 +46,10 @@ impl SystemTime {
 
         #[cfg(any(
             not(feature = "std"),
-            all(feature = "std", all(target_family = "wasm", target_os = "unknown"))
+            all(feature = "std", target_family = "wasm", target_os = "unknown")
         ))]
         {
-            crate::global::panic_missing_system_time()
+            crate::global::get_time_provider().system_time()
         }
     }
 
@@ -59,5 +60,46 @@ impl SystemTime {
         } else {
             Err(earlier.since_unix_epoch - self.since_unix_epoch)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unix_epoch_is_zero() {
+        assert_eq!(UNIX_EPOCH.as_unix_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn roundtrip_unix_duration() {
+        let duration = Duration::from_secs(123) + Duration::from_nanos(456);
+        let time = SystemTime::from_unix_duration(duration);
+        assert_eq!(time.as_unix_duration(), duration);
+    }
+
+    #[test]
+    fn duration_since_forward() {
+        let earlier = SystemTime::from_unix_duration(Duration::from_secs(10));
+        let later = SystemTime::from_unix_duration(Duration::from_secs(12));
+        assert_eq!(later.duration_since(earlier), Ok(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn duration_since_backward() {
+        let earlier = SystemTime::from_unix_duration(Duration::from_secs(10));
+        let later = SystemTime::from_unix_duration(Duration::from_secs(12));
+        assert_eq!(earlier.duration_since(later), Err(Duration::from_secs(2)));
+    }
+
+    #[test]
+    #[cfg(all(
+        feature = "std",
+        not(all(target_family = "wasm", target_os = "unknown"))
+    ))]
+    fn now_is_after_unix_epoch() {
+        let now = SystemTime::now();
+        assert!(now.duration_since(UNIX_EPOCH).is_ok());
     }
 }
