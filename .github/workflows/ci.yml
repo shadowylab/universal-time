@@ -46,5 +46,5 @@ jobs:
         run: cargo clippy ${{ matrix.args }} -- -D warnings
 
       - name: Test
-        if: "!contains(matrix.crate, 'wasm32-')"
+        if: "!contains(matrix.args, 'wasm32-')"
         run: cargo test ${{ matrix.args }}
